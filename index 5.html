@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Mini FPS Mobile</title>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#111;font-family:Arial,sans-serif;touch-action:none}
+canvas{display:block;width:100%;height:100%;background:#222}
+#hud{position:fixed;inset:0;pointer-events:none;color:#fff;text-shadow:0 2px 3px #000}
+#hp{position:absolute;left:16px;top:14px;font-weight:bold}
+#ammo{position:absolute;right:16px;top:14px;font-size:22px;font-weight:bold}
+#msg{position:absolute;left:50%;top:12%;transform:translateX(-50%);font-weight:bold;font-size:22px;text-align:center}
+#stick{position:absolute;left:25px;bottom:25px;width:130px;height:130px;border-radius:50%;background:#ffffff22;border:2px solid #ffffff55;pointer-events:auto}
+#knob{position:absolute;left:35px;top:35px;width:60px;height:60px;border-radius:50%;background:#ffffff66}
+#fire{position:absolute;right:28px;bottom:40px;width:92px;height:92px;border-radius:50%;border:2px solid #fff8;background:#d22a;pointer-events:auto;color:white;font-size:18px;font-weight:bold}
+#reload{position:absolute;right:135px;bottom:42px;width:72px;height:54px;border-radius:14px;border:1px solid #fff8;background:#0008;color:#fff;pointer-events:auto}
+#hint{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);font-size:11px;opacity:.75}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="hud">
+<div id="hp">VIDA 100</div><div id="ammo">12 / 72</div><div id="msg"></div>
+<div id="stick"><div id="knob"></div></div>
+<button id="reload">RECARREGAR</button><button id="fire">ATIRAR</button>
+<div id="hint">Arraste o lado esquerdo para andar • toque no lado direito para mirar • ATIRAR</div>
+</div>
+<script>
+const c=document.getElementById('c'),ctx=c.getContext('2d');
+let W,H,DPR,ang=0,pitch=0,px=0,py=0,health=100,ammo=12,reserve=72,last=performance.now(),kills=0,gameOver=false;
+function resize(){DPR=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=W*DPR;c.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0)}addEventListener('resize',resize);resize();
+const map=[
+"111111111111111","100000000000001","100001000010001","100001000010001","100000000000001",
+"100011111110001","100000000000001","101000000000101","101001111100101","100001000010001",
+"100001000010001","100000000000001","111111111111111"];
+const MW=map[0].length,MH=map.length;
+const bots=[{x:3.5,y:2.5,h:100},{x:10.5,y:3.5,h:100},{x:3.5,y:10.5,h:100},{x:9.5,y:10.5,h:100},{x:7.5,y:6.5,h:100}];
+function wall(x,y){return x<0||y<0||x>=MW||y>=MH||map[Math.floor(y)][Math.floor(x)]==='1'}
+function move(dx,dy){if(!wall(px+dx,py))px+=dx;if(!wall(px,py+dy))py+=dy}
+function cast(a){let x=px,y=py,dx=Math.cos(a)*.035,dy=Math.sin(a)*.035,d=0;while(d<25){x+=dx;y+=dy;d+=.035;if(wall(x,y))return d}return 25}
+function norm(a){return Math.atan2(Math.sin(a),Math.cos(a))}
+function shoot(){
+ if(gameOver)return;
+ if(ammo<=0){reload();return} ammo--;updateAmmo();
+ let best=null,bestAng=.035;
+ for(const b of bots){if(b.h<=0)continue;let dx=b.x-px,dy=b.y-py,d=Math.hypot(dx,dy),da=Math.abs(norm(Math.atan2(dy,dx)-ang));if(da<bestAng && d<20 && cast(Math.atan2(dy,dx))>d-.15){best=b;bestAng=da}}
+ if(best){best.h-=50;if(best.h<=0){kills++; if(kills===bots.length){gameOver=true;document.getElementById('msg').textContent='VITÓRIA! Toque para reiniciar';}}}
+}
+function reload(){if(ammo===12||reserve<=0)return;let n=Math.min(12-ammo,reserve);ammo+=n;reserve-=n;updateAmmo()}
+function updateAmmo(){document.getElementById('ammo').textContent=ammo+" / "+reserve;document.getElementById('hp').textContent="VIDA "+Math.max(0,Math.ceil(health))}
+document.getElementById('fire').ontouchstart=e=>{e.preventDefault();shoot()};document.getElementById('reload').ontouchstart=e=>{e.preventDefault();reload()};
+addEventListener('touchstart',e=>{if(gameOver){location.reload()}},{passive:true});
+let joy={x:0,y:0},active=false,jid=null;
+const stick=document.getElementById('stick'),knob=document.getElementById('knob');
+stick.addEventListener('touchstart',e=>{active=true;jid=e.changedTouches[0].identifier;setJoy(e.changedTouches[0])},{passive:false});
+stick.addEventListener('touchmove',e=>{for(const t of e.changedTouches)if(t.identifier===jid)setJoy(t)},{passive:false});
+stick.addEventListener('touchend',e=>{active=false;joy={x:0,y:0};knob.style.transform='translate(0,0)'},{passive:false});
+function setJoy(t){let r=stick.getBoundingClientRect(),x=t.clientX-(r.left+r.width/2),y=t.clientY-(r.top+r.height/2),m=45,l=Math.hypot(x,y);if(l>m){x=x/l*m;y=y/l*m}joy={x:x/m,y:y/m};knob.style.transform=`translate(${x}px,${y}px)`}
+let lookId=null,lastX=0;
+addEventListener('touchstart',e=>{for(const t of e.changedTouches){if(t.target===c){lookId=t.identifier;lastX=t.clientX}}},{passive:false});
+addEventListener('touchmove',e=>{for(const t of e.changedTouches)if(t.identifier===lookId){ang+=(t.clientX-lastX)*.006;lastX=t.clientX}},{passive:false});
+addEventListener('touchend',e=>{for(const t of e.changedTouches)if(t.identifier===lookId)lookId=null},{passive:false});
+function draw(){
+ ctx.clearRect(0,0,W,H);ctx.fillStyle='#5e87a8';ctx.fillRect(0,0,W,H/2);
+ctx.fillStyle='#252d28';ctx.fillRect(0,H/2,W,H/2);
+for(let i=0;i<8;i++){let y=H/2+(H/2)*(i/8);ctx.fillStyle=`rgb(${30+i*3},${34+i*3},${30+i*3})`;ctx.fillRect(0,y,W,H/16);}
+ const fov=Math.PI/3,rays=Math.max(120,Math.floor(W/4)),strip=W/rays;
+ for(let i=0;i<rays;i++){let ra=ang-fov/2+fov*(i/rays),d=cast(ra)*Math.cos(ra-ang);let wh=Math.min(H*1.5,H*1.2/(d+.1)),top=H/2-wh/2;ctx.fillStyle=`rgb(${Math.max(35,180-d*9)},${Math.max(35,180-d*9)},${Math.max(35,180-d*9)})`;ctx.fillRect(i*strip,top,strip+1,wh)}
+ for(const b of bots){if(b.h<=0)continue;let dx=b.x-px,dy=b.y-py,d=Math.hypot(dx,dy),a=norm(Math.atan2(dy,dx)-ang);if(Math.abs(a)>fov/2)continue;let sx=W/2+Math.tan(a)/(Math.tan(fov/2))*W/2;if(cast(Math.atan2(dy,dx))<d-.1)continue;let size=Math.min(H*0.65, H/(d*.75));let top=H/2-size*.55;ctx.fillStyle='#222';ctx.fillRect(sx-size*.18,top+size*.35,size*.36,size*.5);
+ctx.fillStyle='#b43b32';ctx.fillRect(sx-size*.20,top+size*.38,size*.40,size*.13);
+ctx.fillStyle='#f0c49a';ctx.beginPath();ctx.arc(sx,top+size*.16,size*.18,0,Math.PI*2);ctx.fill()}
+ ctx.save();ctx.translate(W*.63,H*.82);let s=Math.min(W,H);
+ctx.fillStyle='#151515';ctx.beginPath();ctx.moveTo(-s*.12,s*.18);ctx.lineTo(s*.18,s*.18);ctx.lineTo(s*.10,-s*.18);ctx.lineTo(-s*.02,-s*.23);ctx.closePath();ctx.fill();
+ctx.fillStyle='#555';ctx.fillRect(-s*.02,-s*.25,s*.25,s*.06);ctx.restore();
+ctx.strokeStyle='#fff';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(W/2-10,H/2);ctx.lineTo(W/2+10,H/2);ctx.moveTo(W/2,H/2-10);ctx.lineTo(W/2,H/2+10);ctx.stroke();
+}
+function update(dt){if(gameOver)return;move(Math.cos(ang)*(-joy.y)*dt*3.2+Math.cos(ang+Math.PI/2)*joy.x*dt*3.2,Math.sin(ang)*(-joy.y)*dt*3.2+Math.sin(ang+Math.PI/2)*joy.x*dt*3.2);for(const b of bots){if(b.h<=0)continue;let d=Math.hypot(b.x-px,b.y-py);if(d<9){let a=Math.atan2(py-b.y,px-b.x);let nx=b.x+Math.cos(a)*dt*.15,ny=b.y+Math.sin(a)*dt*.15;if(!wall(nx,ny)){b.x=nx;b.y=ny}}if(d<5&&Math.random()<dt*.35){health-=5;updateAmmo();if(health<=0){gameOver=true;document.getElementById('msg').textContent='DERROTA! Toque para reiniciar'}}}}
+function loop(t){let dt=Math.min(.05,(t-last)/1000);last=t;update(dt);draw();requestAnimationFrame(loop)}updateAmmo();requestAnimationFrame(loop);
+</script>
+</body></html>
